@@ -13,7 +13,29 @@ from torch.utils.data import DataLoader
 import torch.distributed as dist
 
 from utils.utils import InputPadder
+from matplotlib import colors
+import numpy as np
+import imageio
+# import flow_vis
 
+def write_flo(flow, filename):
+    """
+    write optical flow in Middlebury .flo format
+    :param flow: optical flow map
+    :param filename: optical flow file path to be saved
+    :return: None
+    """
+#     flow = flow[0, :, :, :]
+    flow_np = flow.detach().cpu().numpy()
+    f = open(filename, 'wb')
+    magic = np.array([202021.25], dtype=np.float32)
+    height, width = flow_np.shape[:2]
+    magic.tofile(f)
+    np.int32(width).tofile(f)
+    np.int32(height).tofile(f)
+    data = np.float32(flow_np).flatten()
+    data.tofile(f)
+    f.close() 
 
 def reduce_list(lists, nprocs):
     new_lists = {}
@@ -60,6 +82,139 @@ def evaluates(args, model, datasets, names, metric_fun, logger=None):
 
     return metrics
 
+def flow2img(flow_data):
+    """
+    convert optical flow into color image
+    :param flow_data:
+    :return: color image
+    """
+    # print(flow_data.shape)
+    # print(type(flow_data))
+    u = flow_data[:, :, 0]
+    v = flow_data[:, :, 1]
+
+    UNKNOW_FLOW_THRESHOLD = 1e7
+    pr1 = abs(u) > UNKNOW_FLOW_THRESHOLD
+    pr2 = abs(v) > UNKNOW_FLOW_THRESHOLD
+    idx_unknown = (pr1 | pr2)
+    u[idx_unknown] = v[idx_unknown] = 0
+
+    # get max value in each direction
+    maxu = -999.
+    maxv = -999.
+    minu = 999.
+    minv = 999.
+    maxu = max(maxu, np.max(u))
+    maxv = max(maxv, np.max(v))
+    minu = min(minu, np.min(u))
+    minv = min(minv, np.min(v))
+
+    rad = np.sqrt(u ** 2 + v ** 2)
+    maxrad = max(-1, np.max(rad))
+    u = u / maxrad + np.finfo(float).eps
+    v = v / maxrad + np.finfo(float).eps
+
+    img = compute_color(u, v)
+
+    idx = np.repeat(idx_unknown[:, :, np.newaxis], 3, axis=2)
+    img[idx] = 0
+
+    return np.uint8(img)
+
+
+def compute_color(u, v):
+    """
+    compute optical flow color map
+    :param u: horizontal optical flow
+    :param v: vertical optical flow
+    :return:
+    """
+
+    height, width = u.shape
+    img = np.zeros((height, width, 3))
+
+    NAN_idx = np.isnan(u) | np.isnan(v)
+    u[NAN_idx] = v[NAN_idx] = 0
+
+    colorwheel = make_color_wheel()
+    ncols = np.size(colorwheel, 0)
+
+    rad = np.sqrt(u ** 2 + v ** 2)
+
+    a = np.arctan2(-v, -u) / np.pi
+
+    fk = (a + 1) / 2 * (ncols - 1) + 1
+
+    k0 = np.floor(fk).astype(int)
+
+    k1 = k0 + 1
+    k1[k1 == ncols + 1] = 1
+    f = fk - k0
+
+    for i in range(0, np.size(colorwheel, 1)):
+        tmp = colorwheel[:, i]
+        col0 = tmp[k0 - 1] / 255
+        col1 = tmp[k1 - 1] / 255
+        col = (1 - f) * col0 + f * col1
+
+        idx = rad <= 1
+        col[idx] = 1 - rad[idx] * (1 - col[idx])
+        notidx = np.logical_not(idx)
+
+        col[notidx] *= 0.75
+        img[:, :, i] = np.uint8(np.floor(255 * col * (1 - NAN_idx)))
+
+    return img
+
+
+def make_color_wheel():
+    """
+    Generate color wheel according Middlebury color code
+    :return: Color wheel
+    """
+    RY = 15
+    YG = 6
+    GC = 4
+    CB = 11
+    BM = 13
+    MR = 6
+
+    ncols = RY + YG + GC + CB + BM + MR
+
+    colorwheel = np.zeros([ncols, 3])
+
+    col = 0
+
+    # RY
+    colorwheel[0:RY, 0] = 255
+    colorwheel[0:RY, 1] = np.transpose(np.floor(255 * np.arange(0, RY) / RY))
+    col += RY
+
+    # YG
+    colorwheel[col:col + YG, 0] = 255 - np.transpose(np.floor(255 * np.arange(0, YG) / YG))
+    colorwheel[col:col + YG, 1] = 255
+    col += YG
+
+    # GC
+    colorwheel[col:col + GC, 1] = 255
+    colorwheel[col:col + GC, 2] = np.transpose(np.floor(255 * np.arange(0, GC) / GC))
+    col += GC
+
+    # CB
+    colorwheel[col:col + CB, 1] = 255 - np.transpose(np.floor(255 * np.arange(0, CB) / CB))
+    colorwheel[col:col + CB, 2] = 255
+    col += CB
+
+    # BM
+    colorwheel[col:col + BM, 2] = 255
+    colorwheel[col:col + BM, 0] = np.transpose(np.floor(255 * np.arange(0, BM) / BM))
+    col += + BM
+
+    # MR
+    colorwheel[col:col + MR, 2] = 255 - np.transpose(np.floor(255 * np.arange(0, MR) / MR))
+    colorwheel[col:col + MR, 0] = 255
+
+    return colorwheel
 
 def evaluate(args, model, dataloader, name, metric_fun, logger=None):
     if logger is not None:
@@ -97,6 +252,114 @@ def evaluate(args, model, dataloader, name, metric_fun, logger=None):
         elapsed = time.time() - tm
 
         output['flow_pred'] = padder.unpad(output['flow_final'])
+#         print(batch['flow_gt'])
+#################################
+#         print("output['flow_pred'].shape:",output['flow_pred'].shape)  # torch.Size([1, 2, 720, 1280])
+        flo = output['flow_pred'][0].permute(1, 2, 0).cpu().numpy()
+        dst_path = "/research/DCEIFlow/result_gopro2_train/"
+        if not os.path.exists(os.path.join(dst_path, "flow_flo")):
+            os.makedirs(os.path.join(dst_path, "flow_flo"))
+#         print("check jinjin", batch['basename'])
+#         print("check jinjin", batch['basename'][index])
+        out_path = os.path.join(dst_path, "flow_flo", batch['basename'][0]+'.flo')
+
+        write_flo(output['flow_pred'][0].permute(1, 2, 0), out_path)
+        
+        uv = flo * 128.0 + 2**15
+        valid = np.ones([uv.shape[0], uv.shape[1], 1])
+        uv = np.concatenate([uv, valid], axis=-1).astype(np.uint8)
+
+        dst_path = "/research/DCEIFlow/result_gopro2_train/"
+        if not os.path.exists(os.path.join(dst_path, "flows")):
+            os.makedirs(os.path.join(dst_path, "flows"))
+        out_path = os.path.join(dst_path, "flows", batch['basename'][0]+'.png')
+#         print("out_path:",out_path)
+        imageio.imwrite(out_path, uv)#, format='PNG-FI')
+
+
+#         test_save = args.test_save
+#         scene = os.path.join(test_save, scene)
+#         if not os.path.exists(scene):
+#             os.makedirs(scene)
+#         path_to_file = os.path.join(scene, ind+'.png')
+# #         path_to_file = os.path.join(test_save, ind+'.png')
+#         imageio.imwrite(path_to_file, uv, format='PNG-FI')
+        flo[np.isinf(flo)] = 0
+#         flow_color = flow_vis.flow_to_color(flo, convert_to_bgr=False)
+        flow_color = flow2img(flo)
+
+#         # flow -> numpy array 2 x height x width
+#         # 2,h,w -> h,w,2
+# #         flow = flow.transpose(1,2,0)
+# #         flow[numpy.isinf(flow)]=0
+#         # Use Hue, Saturation, Value colour model
+#         hsv = np.zeros((flo.shape[0], flo.shape[1], 3), dtype=float)
+
+#         # The additional **0.5 is a scaling factor
+#         mag = np.sqrt(flo[...,0]**2+flo[...,1]**2)**0.5
+
+#         ang = np.arctan2(flo[...,1], flo[...,0])
+#         ang[ang<0]+=np.pi*2
+#         hsv[..., 0] = ang/np.pi/2.0 # Scale from 0..1
+#         hsv[..., 1] = 1
+# #         if scaling is None:
+#         hsv[..., 2] = (mag-mag.min())/(mag-mag.min()).max() # Scale from 0..1
+#         rgb = colors.hsv_to_rgb(hsv)
+#         # This all seems like an overkill, but it's just to exactly match the cv2 implementation
+#         bgr = np.stack([rgb[...,2],rgb[...,1],rgb[...,0]], axis=2)
+
+#         out = bgr*255
+        dst_path = "/research/DCEIFlow/result_gopro2_train/"
+        if not os.path.exists(os.path.join(dst_path, "visualization")):
+            os.makedirs(os.path.join(dst_path, "visualization"))
+        out_path = os.path.join(dst_path, "visualization", batch['basename'][0]+'.png')
+#         print("out_path:",out_path)
+        imageio.imwrite(out_path, flow_color.astype('uint8'))#, format='PNG-FI')
+
+        dst_path = "/research/DCEIFlow/result_gopro2_train/"
+        if not os.path.exists(os.path.join(dst_path, "images")):
+            os.makedirs(os.path.join(dst_path, "images"))
+        out_path = os.path.join(dst_path, "images", batch['basename'][0]+'.png')
+        imageio.imwrite(out_path, batch['image1'][0].permute(1, 2, 0).cpu().numpy().astype('uint8'))#, format='PNG-FI')
+        
+        flo = batch['flow_gt'][0].permute(1, 2, 0).cpu().numpy()
+        flo[np.isinf(flo)] = 0
+#         flow_color = flow_vis.flow_to_color(flo, convert_to_bgr=False)
+        flow_color = flow2img(flo)
+#         flo = batch['flow_gt'][0].permute(1, 2, 0).cpu().numpy()
+#         flo[np.isinf(flo)] = 0
+#         # flow -> numpy array 2 x height x width
+#         # 2,h,w -> h,w,2
+# #         flow = flow.transpose(1,2,0)
+# #         flow[numpy.isinf(flow)]=0
+#         # Use Hue, Saturation, Value colour model
+#         hsv = np.zeros((flo.shape[0], flo.shape[1], 3), dtype=float)
+
+#         # The additional **0.5 is a scaling factor
+#         mag = np.sqrt(flo[...,0]**2+flo[...,1]**2)**0.5
+
+#         ang = np.arctan2(flo[...,1], flo[...,0])
+#         ang[ang<0]+=np.pi*2
+#         hsv[..., 0] = ang/np.pi/2.0 # Scale from 0..1
+#         hsv[..., 1] = 1
+# #         if scaling is None:
+#         hsv[..., 2] = (mag-mag.min())/(mag-mag.min()).max() # Scale from 0..1
+#         rgb = colors.hsv_to_rgb(hsv)
+#         # This all seems like an overkill, but it's just to exactly match the cv2 implementation
+#         bgr = np.stack([rgb[...,2],rgb[...,1],rgb[...,0]], axis=2)
+
+#         out = bgr*255
+        dst_path = "/research/DCEIFlow/result_gopro2_train/"
+        if not os.path.exists(os.path.join(dst_path, "visualization_gt")):
+            os.makedirs(os.path.join(dst_path, "visualization_gt"))
+        out_path = os.path.join(dst_path, "visualization_gt", batch['basename'][0]+'.png')
+#         print("out_path:",out_path)
+        imageio.imwrite(out_path, flow_color.astype('uint8'))#, format='PNG-FI')
+#         if not os.path.exists(os.path.join(scene, "visualization")):
+#             os.makedirs(os.path.join(scene, "visualization"))
+#         path_to_file = os.path.join(scene, "visualization", ind+'_visualize.png')
+#         imageio.imwrite(path_to_file, out.astype('uint8'), format='PNG-FI')
+#################################
         if args.isbi and 'flow_final_bw' in output.keys():
             output['flow_pred_bw'] = padder.unpad(output['flow_final_bw'])
 

@@ -1,6 +1,10 @@
 checkpoints
+checkpoint
 results
 logs*
+*.ipynb
+result_*
+test_hdf5.py
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

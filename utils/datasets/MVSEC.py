@@ -18,6 +18,7 @@ import torch.utils.data.dataset as dataset
 from .MVSEC_utils import generate_corresponding_gt_flow
 from utils.augmentor import fetch_augmentor
 from utils.event_uitls import eventsToVoxel
+import imageio
 
 
 DatasetMapping = {
@@ -61,6 +62,31 @@ Valid_Time_Index = {
     'outdoor_day/outdoor_day2': [4375, 7002],
 }
 
+def plot_points_on_background(points_coordinates,
+                              background,
+                              points_color=[0, 0, 255]):
+    """
+    Args:
+        points_coordinates: array of (y, x) points coordinates
+                            of size (number_of_points x 2).
+        background: (3 x height x width)
+                    gray or color image uint8.
+        color: color of points [red, green, blue] uint8.
+    """
+    if not (len(background.size()) == 3 and background.size(0) == 3):
+        raise ValueError('background should be (color x height x width).')
+    _, height, width = background.size()
+    background_with_points = background.clone()
+    y, x = points_coordinates.transpose(0, 1)
+    if len(x) > 0 and len(y) > 0: # There can be empty arrays!
+        x_min, x_max = x.min(), x.max()
+        y_min, y_max = y.min(), y.max()
+        if not (x_min >= 0 and y_min >= 0 and x_max < width and y_max < height):
+            raise ValueError('points coordinates are outsize of "background" '
+                             'boundaries.')
+        background_with_points[:, y, x] = torch.Tensor(points_color).type_as(
+            background).unsqueeze(-1)
+    return background_with_points
 
 class MVSEC(dataset.Dataset):
     def __init__(self, args, data_root, data_split='in1', data_mode='full', train_ratio=0.6, skip_num=None, aug_params=None):
@@ -134,7 +160,7 @@ class MVSEC(dataset.Dataset):
         gt_file = h5py.File(self.gt_filepath, 'r')
         self.flow_dist_data = gt_file.get('davis/left/flow_dist')
         self.flow_dist_ts = gt_file.get('davis/left/flow_dist_ts')
-        self.flow_dist_ts_numpy = np.array(self.flow_dist_ts, dtype=np.float)
+        self.flow_dist_ts_numpy = np.array(self.flow_dist_ts, dtype=np.float64)
 
         self.image_length = len(self.image_data)
         self.event_length = len(self.events_data)
@@ -165,6 +191,71 @@ class MVSEC(dataset.Dataset):
         if self.skip_mode == 'i' or self.skip_mode == 'c':
             events = self.events_data[image1_event_index:image2_event_index]
             next_ts = image2_ts
+        
+        # Visualization
+#         print(events.shape)
+        x = events[:,0]
+        y = events[:,1]
+        t = events[:,2]
+        p = events[:,3]
+#         print("np.unique(x):", np.unique(x))
+#         print("np.unique(y):", np.unique(y))
+#         print("np.unique(t):", np.unique(t))
+#         print("np.unique(p):", np.unique(p))
+        height, width = image1.shape[:2]#width = 1280; height = 720;
+#         print("height, width", height, width)
+        mask = (x >= 0) & (x < width) & (y >= 0) & (y < height)
+        x = x[mask]
+        y = y[mask]
+        p = p[mask]
+#         p_prime = 2*p - 1
+        p_prime = p
+        t = t[mask]
+        event_curr_prime = np.stack([x, y, t, p_prime], axis=1)
+        
+        # events_to_event_image
+        polarity = event_curr_prime[:, 3] == -1
+#         print("np.unique(event_curr_prime[:, 3]):", np.unique(event_curr_prime[:, 3]))
+#         print("np.unique(polarity):", np.unique(polarity))
+        x_negative = event_curr_prime[~polarity, 0].astype(np.int64)
+        y_negative = event_curr_prime[~polarity, 1].astype(np.int64)
+        x_positive = event_curr_prime[polarity, 0].astype(np.int64)
+        y_positive = event_curr_prime[polarity, 1].astype(np.int64)
+
+        positive_histogram, _, _ = np.histogram2d(
+            x_positive,
+            y_positive,
+            bins=(width, height),
+            range=[[0, width], [0, height]])
+        negative_histogram, _, _ = np.histogram2d(
+            x_negative,
+            y_negative,
+            bins=(width, height),
+            range=[[0, width], [0, height]])
+
+        # Red -> Negative Events
+        red = np.transpose((negative_histogram >= positive_histogram) & (negative_histogram != 0))
+        # Blue -> Positive Events
+        blue = np.transpose(positive_histogram > negative_histogram)
+        
+        height, width = red.shape
+        background = torch.full((3, height, width), 255).byte()
+        
+        points_on_background = plot_points_on_background(
+            torch.nonzero(torch.from_numpy(red.astype(np.uint8))), background,
+            [255, 0, 0])
+        points_on_background = plot_points_on_background(
+            torch.nonzero(torch.from_numpy(blue.astype(np.uint8))),
+            points_on_background, [0, 0, 255])
+        
+        dst_path = "/research/DCEIFlow/result_MVSEC/"
+        if not os.path.exists(os.path.join(dst_path, "events")):
+            os.makedirs(os.path.join(dst_path, "events"))
+        out_path = os.path.join(dst_path, "events", str(index).zfill(6)+'.png')
+#         print("out_path:",out_path)
+        imageio.imsave(out_path, points_on_background.permute(1,2,0))#, format='PNG-FI')
+        
+        
 
         height, width = image1.shape[:2]
         event_voxel = eventsToVoxel(events, num_bins=self.event_bins, height=height, width=width, \

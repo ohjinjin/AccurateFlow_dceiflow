@@ -87,15 +87,20 @@ class EventFlowAugmentor:
         if torch.FloatTensor(1).uniform_(0, 1).item() < self.asymmetric_color_aug_prob:
             img1 = np.array(self.photo_aug(
                 Image.fromarray(img1)), dtype=np.uint8)
-            img2 = np.array(self.photo_aug(
-                Image.fromarray(img2)), dtype=np.uint8)
+            if img2 is not None:
+                img2 = np.array(self.photo_aug(
+                    Image.fromarray(img2)), dtype=np.uint8)
 
         # symmetric
         else:
-            image_stack = np.concatenate([img1, img2], axis=0)
-            image_stack = np.array(self.photo_aug(
-                Image.fromarray(image_stack)), dtype=np.uint8)
-            img1, img2 = np.split(image_stack, 2, axis=0)
+            if img2 is not None:
+                image_stack = np.concatenate([img1, img2], axis=0)
+                image_stack = np.array(self.photo_aug(
+                    Image.fromarray(image_stack)), dtype=np.uint8)
+                img1, img2 = np.split(image_stack, 2, axis=0)
+            else:
+                img1 = np.array(self.photo_aug(
+                Image.fromarray(img1)), dtype=np.uint8)
 
         return img1, img2
 
@@ -105,7 +110,8 @@ class EventFlowAugmentor:
             if torch.FloatTensor(1).uniform_(0, 1).item() < self.h_flip_prob:  # h-flip
                 event = event[:, :, ::-1]
                 img1 = img1[:, ::-1]
-                img2 = img2[:, ::-1]
+                if img2 is not None:
+                    img2 = img2[:, ::-1]
                 flow = flow[:, ::-1] * [-1.0, 1.0]
                 if flow10 is not None:
                     flow10 = flow10[:, ::-1] * [-1.0, 1.0]
@@ -119,7 +125,8 @@ class EventFlowAugmentor:
             if torch.FloatTensor(1).uniform_(0, 1).item() < self.v_flip_prob:  # v-flip
                 event = event[:, ::-1, :]
                 img1 = img1[::-1, :]
-                img2 = img2[::-1, :]
+                if img2 is not None:
+                    img2 = img2[::-1, :]
                 flow = flow[::-1, :] * [1.0, -1.0]
                 if flow10 is not None:
                     flow10 = flow10[::-1, :] * [1.0, -1.0]
@@ -135,7 +142,8 @@ class EventFlowAugmentor:
 
         event = event[:, y0:y0+self.crop_size[0], x0:x0+self.crop_size[1]]
         img1 = img1[y0:y0+self.crop_size[0], x0:x0+self.crop_size[1]]
-        img2 = img2[y0:y0+self.crop_size[0], x0:x0+self.crop_size[1]]
+        if img2 is not None:
+            img2 = img2[y0:y0+self.crop_size[0], x0:x0+self.crop_size[1]]
         flow = flow[y0:y0+self.crop_size[0], x0:x0+self.crop_size[1]]
         if flow10 is not None:
             flow10 = flow10[y0:y0+self.crop_size[0], x0:x0+self.crop_size[1]]
@@ -155,7 +163,8 @@ class EventFlowAugmentor:
 
         event = np.ascontiguousarray(event)
         img1 = np.ascontiguousarray(img1)
-        img2 = np.ascontiguousarray(img2)
+        if img2 is not None:
+            img2 = np.ascontiguousarray(img2)
         flow = np.ascontiguousarray(flow)
         if flow10 is not None:
             flow10 = np.ascontiguousarray(flow10)

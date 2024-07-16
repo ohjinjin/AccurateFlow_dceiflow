@@ -184,9 +184,9 @@ def events_to_neg_pos_voxel_torch(xs, ys, ts, ps, B, device=None,
 
 
 def eventsToXYTP(events, process=False):
-    event_x = events[:, 0].astype(np.int)
-    event_y = events[:, 1].astype(np.int)
-    event_pols = events[:, 3].astype(np.int)
+    event_x = events[:, 0].astype(np.int32)
+    event_y = events[:, 1].astype(np.int32)
+    event_pols = events[:, 3].astype(np.int32)
 
     event_timestamps = events[:, 2]
 

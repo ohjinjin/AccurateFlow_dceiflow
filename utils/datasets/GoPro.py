@@ -326,7 +326,7 @@ class GoPro(dataset.Dataset):
             torch.nonzero(torch.from_numpy(blue.astype(np.uint8))),
             points_on_background, [0, 0, 255])
         
-        dst_path = "/research/DCEIFlow/result_gopro2_train/"
+        dst_path = "/research/DCEIFlow/result_gopro_adjtemp/"
         if not os.path.exists(os.path.join(dst_path, "events")):
             os.makedirs(os.path.join(dst_path, "events"))
         out_path = os.path.join(dst_path, "events", '-'.join((os.path.basename(self.image1_filenames[index])).split('-')[:-1])+'.png')

@@ -21,8 +21,8 @@ def fetch_dataset(args):
     elif args.stage == 'gopro':
         aug_params = {'crop_size': args.crop_size,
                       'min_scale': -0.2, 'max_scale': 0.4, 'do_flip': True}
-        train_dataset = GoPro(args, '/data/gopro_dceiflow_s2s3', data_kind='train', aug_params=aug_params)
-        dataset1_val = GoPro(args, '/data/gopro_dceiflow_s2s3', data_kind='traintest')
+        train_dataset = GoPro(args, '/data/gopro_dceiflow_joowan', data_kind='train', aug_params=aug_params)
+        dataset1_val = GoPro(args, '/data/gopro_dceiflow_joowan', data_kind='traintest')
         val_datasets = [dataset1_val]
         val_setnames = ['goprotraintest']
 
@@ -64,7 +64,7 @@ def fetch_test_dataset(args):
 #         names = ['GOPR0384_11_00']
         
     elif args.stage == 'gopro' or args.stage == 'goprotest':
-        dataset = GoPro(args, '/data/gopro_dceiflow_2', data_kind='train')
+        dataset = GoPro(args, '/data/gopro_dceiflow_joowan', data_kind='train')
         test_datasets = [dataset]
         names = ['goprotest']
 

@@ -2,7 +2,8 @@ checkpoints
 checkpoint
 results
 logs*
-*.ipynb
+create_pseudogt_with_raft*.ipynb
+
 result_*
 test_hdf5.py
 

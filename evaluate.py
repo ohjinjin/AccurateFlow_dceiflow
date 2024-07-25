@@ -256,7 +256,7 @@ def evaluate(args, model, dataloader, name, metric_fun, logger=None):
 #################################
 #         print("output['flow_pred'].shape:",output['flow_pred'].shape)  # torch.Size([1, 2, 720, 1280])
         flo = output['flow_pred'][0].permute(1, 2, 0).cpu().numpy()
-        dst_path = "/research/DCEIFlow/result_gopro2_train/"
+        dst_path = "/research/DCEIFlow/result_gopro_adjtemp/"
         if not os.path.exists(os.path.join(dst_path, "flow_flo")):
             os.makedirs(os.path.join(dst_path, "flow_flo"))
 #         print("check jinjin", batch['basename'])
@@ -269,7 +269,7 @@ def evaluate(args, model, dataloader, name, metric_fun, logger=None):
         valid = np.ones([uv.shape[0], uv.shape[1], 1])
         uv = np.concatenate([uv, valid], axis=-1).astype(np.uint8)
 
-        dst_path = "/research/DCEIFlow/result_gopro2_train/"
+        dst_path = "/research/DCEIFlow/result_gopro_adjtemp/"
         if not os.path.exists(os.path.join(dst_path, "flows")):
             os.makedirs(os.path.join(dst_path, "flows"))
         out_path = os.path.join(dst_path, "flows", batch['basename'][0]+'.png')
@@ -309,14 +309,14 @@ def evaluate(args, model, dataloader, name, metric_fun, logger=None):
 #         bgr = np.stack([rgb[...,2],rgb[...,1],rgb[...,0]], axis=2)
 
 #         out = bgr*255
-        dst_path = "/research/DCEIFlow/result_gopro2_train/"
+        dst_path = "/research/DCEIFlow/result_gopro_adjtemp/"
         if not os.path.exists(os.path.join(dst_path, "visualization")):
             os.makedirs(os.path.join(dst_path, "visualization"))
         out_path = os.path.join(dst_path, "visualization", batch['basename'][0]+'.png')
 #         print("out_path:",out_path)
         imageio.imwrite(out_path, flow_color.astype('uint8'))#, format='PNG-FI')
 
-        dst_path = "/research/DCEIFlow/result_gopro2_train/"
+        dst_path = "/research/DCEIFlow/result_gopro_adjtemp/"
         if not os.path.exists(os.path.join(dst_path, "images")):
             os.makedirs(os.path.join(dst_path, "images"))
         out_path = os.path.join(dst_path, "images", batch['basename'][0]+'.png')
@@ -349,7 +349,7 @@ def evaluate(args, model, dataloader, name, metric_fun, logger=None):
 #         bgr = np.stack([rgb[...,2],rgb[...,1],rgb[...,0]], axis=2)
 
 #         out = bgr*255
-        dst_path = "/research/DCEIFlow/result_gopro2_train/"
+        dst_path = "/research/DCEIFlow/result_gopro_adjtemp/"
         if not os.path.exists(os.path.join(dst_path, "visualization_gt")):
             os.makedirs(os.path.join(dst_path, "visualization_gt"))
         out_path = os.path.join(dst_path, "visualization_gt", batch['basename'][0]+'.png')
